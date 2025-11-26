@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <title>API Demo</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 16px;
+        }
+        label {
+            display: block;
+            margin-top: 12px;
+        }
+        input[type="text"],
+        input[type="password"],
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px;
+            margin-top: 4px;
+        }
+        textarea {
+            min-height: 200px;
+            font-family: monospace;
+        }
+        button {
+            margin-top: 16px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+        #status {
+            margin-top: 12px;
+        }
+        #result {
+            margin-top: 16px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            background: #f7f7f7;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .error {
+            color: #b00020;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Вызов MLOps API</h1>
+
+<p>
+    Эта форма делает то же самое, что и ваш <code>curl</code> запрос:
+    <br>
+    <code>POST + JSON + Basic Auth</code> на ваш endpoint.
+</p>
+
+<label>
+    Логин для API:
+    <input id="username" type="text" placeholder="username" />
+</label>
+
+<label>
+    Пароль для API:
+    <input id="password" type="password" placeholder="password" />
+</label>
+
+<label>
+    JSON-запрос (аналог файла <code>data.json</code>):
+    <textarea id="jsonInput">
+{
+    "example": "value"
+}
+    </textarea>
+</label>
+
+<button id="sendBtn">Отправить запрос</button>
+
+<div id="status"></div>
+<pre id="result"></pre>
+
+<script>
+    // TODO: подставьте ваш реальный URL, как в curl
+    const API_URL = "https://platform.stratpro.hse.ru/pu-username-pa-appname/pipelines/PIPELINE_NAME/trials";
+
+    const usernameEl = document.getElementById("username");
+    const passwordEl = document.getElementById("password");
+    const jsonInputEl = document.getElementById("jsonInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+
+    sendBtn.addEventListener("click", async () => {
+        const username = usernameEl.value.trim();
+        const password = passwordEl.value.trim();
+        const jsonText = jsonInputEl.value.trim();
+
+        if (!username || !password) {
+            alert("Введите логин и пароль");
+            return;
+        }
+        if (!jsonText) {
+            alert("Введите JSON-запрос");
+            return;
+        }
+
+        // Проверим, что JSON валидный (как data.json)
+        let parsed;
+        try {
+            parsed = JSON.parse(jsonText);
+        } catch (e) {
+            alert("Некорректный JSON: " + e.message);
+            return;
+        }
+
+        statusEl.textContent = "Отправляю запрос...";
+        statusEl.classList.remove("error");
+        resultEl.textContent = "";
+
+        try {
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic " + btoa(username + ":" + password)
+                },
+                body: JSON.stringify(parsed)
+            });
+
+            const respText = await response.text();
+
+            if (!response.ok) {
+                statusEl.textContent = "Ошибка HTTP " + response.status;
+                statusEl.classList.add("error");
+            } else {
+                statusEl.textContent = "Успешный ответ";
+                statusEl.classList.remove("error");
+            }
+
+            // Попробуем красиво отформатировать JSON, если это JSON
+            try {
+                const maybeJson = JSON.parse(respText);
+                resultEl.textContent = JSON.stringify(maybeJson, null, 2);
+            } catch {
+                resultEl.textContent = respText;
+            }
+
+        } catch (err) {
+            statusEl.textContent = "Ошибка при запросе: " + err;
+            statusEl.classList.add("error");
+            resultEl.textContent = "";
+        }
+    });
+</script>
+
+</body>
+</html>
