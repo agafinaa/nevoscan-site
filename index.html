@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8" />
-    <title>API Demo</title>
+    <title>API Demo — загрузка изображения</title>
     <style>
         body {
             font-family: sans-serif;
@@ -16,15 +16,12 @@
         }
         input[type="text"],
         input[type="password"],
+        input[type="file"],
         textarea {
             width: 100%;
             box-sizing: border-box;
             padding: 8px;
             margin-top: 4px;
-        }
-        textarea {
-            min-height: 200px;
-            font-family: monospace;
         }
         button {
             margin-top: 16px;
@@ -45,16 +42,20 @@
         .error {
             color: #b00020;
         }
+        img#preview {
+            margin-top: 12px;
+            max-width: 300px;
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-<h1>Вызов MLOps API</h1>
+<h1>Вызов MLOps API с изображением</h1>
 
 <p>
-    Эта форма делает то же самое, что и ваш <code>curl</code> запрос:
-    <br>
-    <code>POST + JSON + Basic Auth</code> на ваш endpoint.
+    Эта форма делает <strong>POST c JSON</strong> на ваш endpoint.<br>
+    В JSON кладётся изображение в формате <code>base64</code>.
 </p>
 
 <label>
@@ -68,13 +69,18 @@
 </label>
 
 <label>
-    JSON-запрос (аналог файла <code>data.json</code>):
-    <textarea id="jsonInput">
-{
-    "example": "value"
-}
-    </textarea>
+    Изображение:
+    <input id="fileInput" type="file" accept="image/*" />
 </label>
+
+<img id="preview" alt="Превью изображения" />
+
+<!-- Если нужно передавать ещё какие-то параметры в JSON — можно раскомментировать:
+<label>
+    Дополнительные поля JSON (необязательно, формат: {"key": "value"}):
+    <textarea id="extraJson"></textarea>
+</label>
+-->
 
 <button id="sendBtn">Отправить запрос</button>
 
@@ -82,76 +88,120 @@
 <pre id="result"></pre>
 
 <script>
-    // TODO: подставьте ваш реальный URL, как в curl
+    // TODO: подставьте ваш реальный URL (как в curl)
     const API_URL = "https://platform.stratpro.hse.ru/pu-username-pa-appname/pipelines/PIPELINE_NAME/trials";
 
     const usernameEl = document.getElementById("username");
     const passwordEl = document.getElementById("password");
-    const jsonInputEl = document.getElementById("jsonInput");
+    const fileInputEl = document.getElementById("fileInput");
     const sendBtn = document.getElementById("sendBtn");
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");
+    const previewEl = document.getElementById("preview");
+    // const extraJsonEl = document.getElementById("extraJson");
+
+    // Показываем превью выбранного файла
+    fileInputEl.addEventListener("change", () => {
+        const file = fileInputEl.files[0];
+        if (!file) {
+            previewEl.style.display = "none";
+            previewEl.src = "";
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = e => {
+            previewEl.src = e.target.result;
+            previewEl.style.display = "block";
+        };
+        reader.readAsDataURL(file);
+    });
 
     sendBtn.addEventListener("click", async () => {
         const username = usernameEl.value.trim();
         const password = passwordEl.value.trim();
-        const jsonText = jsonInputEl.value.trim();
+        const file = fileInputEl.files[0];
 
         if (!username || !password) {
             alert("Введите логин и пароль");
             return;
         }
-        if (!jsonText) {
-            alert("Введите JSON-запрос");
+        if (!file) {
+            alert("Выберите изображение");
             return;
         }
 
-        // Проверим, что JSON валидный (как data.json)
-        let parsed;
-        try {
-            parsed = JSON.parse(jsonText);
-        } catch (e) {
-            alert("Некорректный JSON: " + e.message);
-            return;
-        }
-
-        statusEl.textContent = "Отправляю запрос...";
+        statusEl.textContent = "Читаю файл и отправляю запрос...";
         statusEl.classList.remove("error");
         resultEl.textContent = "";
 
-        try {
-            const response = await fetch(API_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": "Basic " + btoa(username + ":" + password)
-                },
-                body: JSON.stringify(parsed)
-            });
-
-            const respText = await response.text();
-
-            if (!response.ok) {
-                statusEl.textContent = "Ошибка HTTP " + response.status;
-                statusEl.classList.add("error");
-            } else {
-                statusEl.textContent = "Успешный ответ";
-                statusEl.classList.remove("error");
-            }
-
-            // Попробуем красиво отформатировать JSON, если это JSON
+        // Читаем файл как DataURL, из него достанем base64
+        const reader = new FileReader();
+        reader.onload = async e => {
             try {
-                const maybeJson = JSON.parse(respText);
-                resultEl.textContent = JSON.stringify(maybeJson, null, 2);
-            } catch {
-                resultEl.textContent = respText;
-            }
+                const dataUrl = e.target.result; // "data:image/png;base64,AAAA..."
+                const base64 = dataUrl.split(",")[1]; // отрезаем префикс "data:...;base64,"
 
-        } catch (err) {
-            statusEl.textContent = "Ошибка при запросе: " + err;
+                // Базовый JSON-пейлоад — ПОД ЭТО НУЖНО ПОДОГНАТЬ СВОЙ PIPELINE
+                let payload = {
+                    image: base64,
+                    filename: file.name,
+                    mime_type: file.type || "application/octet-stream"
+                };
+
+                // Если надо добавить свои поля, можно слить их сюда:
+                /*
+                const extraText = extraJsonEl.value.trim();
+                if (extraText) {
+                    try {
+                        const extraObj = JSON.parse(extraText);
+                        payload = { ...payload, ...extraObj };
+                    } catch (e) {
+                        alert("Некорректный JSON в дополнительных полях: " + e.message);
+                        return;
+                    }
+                }
+                */
+
+                const response = await fetch(API_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Basic " + btoa(username + ":" + password)
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const respText = await response.text();
+
+                if (!response.ok) {
+                    statusEl.textContent = "Ошибка HTTP " + response.status;
+                    statusEl.classList.add("error");
+                } else {
+                    statusEl.textContent = "Успешный ответ";
+                    statusEl.classList.remove("error");
+                }
+
+                // Пробуем красиво отформатировать JSON
+                try {
+                    const maybeJson = JSON.parse(respText);
+                    resultEl.textContent = JSON.stringify(maybeJson, null, 2);
+                } catch {
+                    resultEl.textContent = respText;
+                }
+
+            } catch (err) {
+                statusEl.textContent = "Ошибка при обработке файла или запросе: " + err;
+                statusEl.classList.add("error");
+                resultEl.textContent = "";
+            }
+        };
+
+        reader.onerror = () => {
+            statusEl.textContent = "Ошибка чтения файла";
             statusEl.classList.add("error");
-            resultEl.textContent = "";
-        }
+        };
+
+        reader.readAsDataURL(file);
     });
 </script>
 
